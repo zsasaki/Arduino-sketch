@@ -2,8 +2,6 @@
   温度、湿度、気圧計
 
   BME280からI2Cでデータ取得し、LCDに表示する。
-
-  パラレルIF LCDバージョン
 ******************************************************************************/
 
 #include <stdint.h>
@@ -36,7 +34,9 @@ volatile int BLstate = HIGH;
 volatile unsigned long time_now, time_prev = 0;
 unsigned long time_chat = 20;
 
-volatile char rotate[] = "|/-";
+const char rotate[] = {
+  '|', '/', '-', char(0),
+};
 
 // Create Backslash as Special Character #0
 uint8_t specialChar0[8] = {
@@ -106,19 +106,21 @@ void setup()
   // Serial.begin(9600);
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(PUSH_SWITCH, INPUT_PULLUP); // バックライトON/OFFスイッチ入力
+  delay(10);
+  mySensor.begin();
+  delay(10);
+
+  analogWrite(CONTRAST, CONT_VALUE); // LCD Contrast Setting
+  analogWrite(BACKLIGHT, BL_ON);     // Backlight LED
+
+  lcd.begin(16, 2);
+  lcd.clear();
+  lcd.createChar(0, specialChar0);
   // バックライトボタン押下時の割込
   attachInterrupt(digitalPinToInterrupt(PUSH_SWITCH), toggleBackLight, LOW);
   Timer1.initialize(1000000);
   // Timer1.attachInterrupt(blinkLed);
   Timer1.attachInterrupt(rotateChar);
-  delay(10);
-  mySensor.begin();
-  delay(10);
-  analogWrite(CONTRAST, CONT_VALUE); // LCD Contrast Setting
-  analogWrite(BACKLIGHT, BL_ON); // Backlight LED
-  lcd.begin(16, 2);
-  lcd.clear();
-  lcd.createChar(0, specialChar0);
 }
 
 void loop()
@@ -130,24 +132,24 @@ void loop()
 
   char temp[8], hum[8], pres_hpa[8], pres_inhg[8], line1[17], line2[17];
 
-  // 1行目温度と湿度の表示
-  lcd.setCursor(0, 0);
+  // 1行目: 温度と湿度の表示
   dtostrf(mySensor.readTempC(), 5, 2, temp);
   dtostrf(mySensor.readFloatHumidity(), 5, 2, hum);
+  sprintf(line1, " %s\337C %s%% ", temp, hum);
 
-  sprintf(line1, " %s\337C %s%%", temp, hum);
-  lcd.print(line1);
-
-  // 2行目METAR風気圧表示
-  lcd.setCursor(0, 1);
-  // 気圧取得(Pa)
+  // 2行目: METAR風気圧表示
   float p = mySensor.readFloatPressure();
   // hPa値
   sprintf(pres_hpa, "%04d", (int)(p / 100));
   // inHg値 METAR風表示のため100倍で表示)
   sprintf(pres_inhg, "%04d", (int)(p * INHG_RATE));
   sprintf(line2, "  Q%s  A%s ", pres_hpa, pres_inhg);
+  noInterrupts();
+  lcd.setCursor(0, 0);
+  lcd.print(line1);
+  lcd.setCursor(0, 1);
   lcd.print(line2);
+  interrupts();
 
   delay(10000);
 }
@@ -159,14 +161,12 @@ void blinkLed() {
 
 // 動作確認表示 スラッシュぐるぐる
 void rotateChar() {
-  lcd.setCursor(15, 1);
-  if (rotate_pos < 3) {
-    lcd.print(rotate[rotate_pos]);
-    rotate_pos++;
-  } else {
-    lcd.print(char(0));
+  if (rotate_pos > 3) {
     rotate_pos = 0;
   }
+  lcd.setCursor(15, 1);
+  lcd.print(rotate[rotate_pos]);
+  rotate_pos++;
 }
 
 // バックライトON/OFFボタン動作
