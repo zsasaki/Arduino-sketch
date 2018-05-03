@@ -1,33 +1,34 @@
 /******************************************************************************
   温度、湿度、気圧計
-
   BME280からI2Cでデータ取得し、LCDに表示する。
+  zack at ss.iij4u.or.jp
 ******************************************************************************/
 
-#include <stdint.h>
+#include "LowPower.h"
 #include "SparkFunBME280.h"
 #include "Wire.h"
 #include <LiquidCrystal.h>
 #include <TimerOne.h>
 
-// バックライトピン番号
-#define BACKLIGHT 5
-#define BL_ON 32
+// バックライト制御ピン番号
+#define BACKLIGHT 10
+// バックライトの明るさをPWMで設定
+#define BL_ON 128
 #define BL_OFF 0
 
 // バックライトON/OFFスイッチ
-#define PUSH_SWITCH 2
+#define PUSH_SWITCH A0
 
 // コントラストピン番号
 #define CONTRAST 3
-#define CONT_VALUE 110
+#define CONT_VALUE 96
 
 // hPa(ヘクトパスカル)からinHg(水銀柱インチ)への変換レート
 #define INHG_RATE 0.02952998330101
 
 //Global sensor object
 BME280 mySensor;
-LiquidCrystal lcd(6, 7, 8, 9, 10, 11);
+LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
 
 // バックライトステータス
 volatile int BLstate = HIGH;
@@ -59,7 +60,7 @@ void setup()
 
   //For I2C, enable the following and disable the SPI section
   mySensor.settings.commInterface = I2C_MODE;
-  mySensor.settings.I2CAddress = 0x76;
+  mySensor.settings.I2CAddress = 0x77;
 
   //***Operation settings*****************************//
 
@@ -110,26 +111,21 @@ void setup()
   mySensor.begin();
   delay(10);
 
-  analogWrite(CONTRAST, CONT_VALUE); // LCD Contrast Setting
-  analogWrite(BACKLIGHT, BL_ON);     // Backlight LED
-
   lcd.begin(16, 2);
   lcd.clear();
   lcd.createChar(0, specialChar0);
   // バックライトボタン押下時の割込
-  attachInterrupt(digitalPinToInterrupt(PUSH_SWITCH), toggleBackLight, LOW);
+  //  attachInterrupt(digitalPinToInterrupt(PUSH_SWITCH), toggleBackLight, LOW);
+  //attachInterrupt(PUSH_SWITCH, toggleBackLight, LOW);
   Timer1.initialize(1000000);
-  // Timer1.attachInterrupt(blinkLed);
+  //  Timer1.attachInterrupt(blinkLed);
   Timer1.attachInterrupt(rotateChar);
+  analogWrite(CONTRAST, CONT_VALUE); // LCD Contrast Setting
+  //analogWrite(BACKLIGHT, BL_ON);     // Backlight LED
 }
 
 void loop()
 {
-  //Each loop, take a reading.
-  //Start with temperature, as that data is needed for accurate compensation.
-  //Reading the temperature updates the compensators of the other functions
-  //in the background.
-
   char temp[8], hum[8], pres_hpa[8], pres_inhg[8], line1[17], line2[17];
 
   // 1行目: 温度と湿度の表示
@@ -151,6 +147,8 @@ void loop()
   lcd.print(line2);
   interrupts();
 
+  //  LowPower.idle(SLEEP_8S, ADC_OFF, BOD_OFF); //8秒間スリープ
+
   delay(10000);
 }
 
@@ -167,6 +165,7 @@ void rotateChar() {
   lcd.setCursor(15, 1);
   lcd.print(rotate[rotate_pos]);
   rotate_pos++;
+  blinkLed();
 }
 
 // バックライトON/OFFボタン動作
@@ -176,6 +175,7 @@ void toggleBackLight() {
   if (time_now - time_prev < time_chat) {
     return;
   }
+  digitalWrite(BACKLIGHT, digitalRead(BACKLIGHT) ^ 1);
   if (BLstate == HIGH) {
     analogWrite(BACKLIGHT, BL_OFF);
   } else {
